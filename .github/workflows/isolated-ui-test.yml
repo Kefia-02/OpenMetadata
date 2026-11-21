@@ -33,15 +33,15 @@ jobs:
           corepack enable
           cd openmetadata-ui/src/main/resources/ui
           yarn install --frozen-lockfile --network-timeout 100000
-      - name: Run TypeScript typechecking
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd openmetadata-ui/src/main/resources/ui
-          yarn tsc:check
       - name: Run table constraints Jest regression
         shell: bash
         run: |
           set -euo pipefail
           cd openmetadata-ui/src/main/resources/ui
           yarn test --runInBand --watch=false --coverage=false --runTestsByPath src/utils/TableUtils.test.tsx
+      - name: Run TypeScript typechecking
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd openmetadata-ui/src/main/resources/ui
+          yarn tsc:check
