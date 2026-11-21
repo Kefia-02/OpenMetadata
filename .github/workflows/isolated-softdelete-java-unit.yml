@@ -1,0 +1,30 @@
+name: Isolated Java soft-delete suite regression
+on:
+  push:
+    branches:
+      - verify/softdelete-java-unit-20261121
+permissions:
+  contents: read
+jobs:
+  test-suite-repository:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/test-suite-soft-delete-results-38228-20261120
+          persist-credentials: false
+      - name: Validate submitted PR commit
+        run: test "$(git rev-parse HEAD)" = "9d899d817f83bab41f82adb1bf0dec519d2830fc"
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Run focused TestSuiteRepositoryTest and reactor dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn -B --no-transfer-progress test -pl openmetadata-service -am -Dtest=TestSuiteRepositoryTest -Dsurefire.failIfNoSpecifiedTests=false -DfailIfNoTests=false
