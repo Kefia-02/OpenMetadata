@@ -28,4 +28,4 @@ jobs:
           mvn --batch-mode --no-transfer-progress -pl openmetadata-service -am \
             -Dtest=ODCSConverterTest \
             -Dsurefire.failIfNoSpecifiedTests=false \
-            test
+            install
