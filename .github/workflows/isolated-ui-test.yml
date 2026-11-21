@@ -1,0 +1,44 @@
+name: Isolated OpenMetadata UI typecheck and constraint tests
+on:
+  push:
+    branches:
+      - verify/openmetadata-ui-tests-20261121
+permissions:
+  contents: read
+jobs:
+  validate-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/unique-not-null-column-constraint-37986-20261120
+          persist-credentials: false
+      - name: Check exact PR code after generated model commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "1f82dc46bb68ffcf7fd9efbd39b93b006f530bfa"
+          grep -q 'NotNullUnique' openmetadata-ui/src/main/resources/ui/src/generated/entity/data/table.ts
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: openmetadata-ui/src/main/resources/ui/.nvmrc
+      - name: Install official UI lockfile dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          cd openmetadata-ui/src/main/resources/ui
+          yarn install --frozen-lockfile --network-timeout 100000
+      - name: Run TypeScript typechecking
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd openmetadata-ui/src/main/resources/ui
+          yarn tsc:check
+      - name: Run table constraints Jest regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd openmetadata-ui/src/main/resources/ui
+          yarn test --runInBand --watch=false --coverage=false --runTestsByPath src/utils/TableUtils.test.tsx
