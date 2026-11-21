@@ -1,0 +1,87 @@
+name: Isolated real SQL constraint metadata regression
+on:
+  push:
+    branches:
+      - verify/openmetadata-db-constraints-20261121
+permissions:
+  contents: read
+jobs:
+  db-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout exact constraint PR
+        uses: actions/checkout@v4
+        with:
+          ref: fix/unique-not-null-column-constraint-37986-20261120
+          persist-credentials: false
+      - name: Verify source commit
+        run: test "$(git rev-parse HEAD)" = "1f82dc46bb68ffcf7fd9efbd39b93b006f530bfa"
+      - name: Install official metadata Python environment
+        uses: ./.github/actions/setup-openmetadata-test-environment
+        with:
+          python-version: '3.10'
+          classification-models: 'false'
+          install-server: 'false'
+      - name: Reflect real SQLite and PostgreSQL schema through ingestion handler
+        shell: bash
+        run: |
+          set -euo pipefail
+          source env/bin/activate
+          python - <<'PY'
+          from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, inspect
+          from metadata.generated.schema.entity.data.table import Constraint
+          from metadata.ingestion.source.database.sql_column_handler import SqlColumnHandlerMixin
+
+          class Handler(SqlColumnHandlerMixin):
+              def get_column_tag_labels(self, table_name, column):
+                  return None
+
+          expected = {
+              'id': Constraint.PRIMARY_KEY,
+              'strict_unique': Constraint.NOT_NULL_UNIQUE,
+              'nullable_unique': Constraint.UNIQUE,
+              'mandatory': Constraint.NOT_NULL,
+              'allowed': Constraint.NULL,
+          }
+
+          urls = {
+              'sqlite': 'sqlite:///:memory:',
+              'postgresql': 'postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/postgres',
+          }
+          for name, url in urls.items():
+              engine = create_engine(url)
+              schema = 'main' if name == 'sqlite' else 'public'
+              metadata = MetaData()
+              Table('constraint_reflection_test', metadata,
+                    Column('id', Integer, primary_key=True),
+                    Column('strict_unique', String(80), nullable=False, unique=True),
+                    Column('nullable_unique', String(80), nullable=True, unique=True),
+                    Column('mandatory', String(80), nullable=False),
+                    Column('allowed', String(80), nullable=True),
+              )
+              metadata.create_all(engine)
+              inspector = inspect(engine)
+              columns, constraints, foreign_keys = Handler().get_columns_and_constraints(
+                  schema, 'constraint_reflection_test', 'local', inspector
+              )
+              observed = {column.name.root: column.constraint for column in columns}
+              assert observed == expected, (name, observed, expected)
+              print(f'PASS {name}: {len(observed)} reflected columns have exact schema constraints')
+              metadata.drop_all(engine)
+              engine.dispose()
+          PY
