@@ -1,18 +1,57 @@
-name: Isolated OpenMetadata validation probe
+name: Isolated OpenMetadata schema regeneration
 on:
   push:
     branches:
       - verify/openmetadata-ci-20261121
 permissions:
-  contents: read
+  contents: write
 jobs:
-  probe:
+  generate-typescript-for-draft:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 30
     steps:
-      - name: Verify runner and branch
+      - name: Checkout exact draft PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/unique-not-null-column-constraint-37986-20261120
+          fetch-depth: 1
+          persist-credentials: true
+      - name: Verify original PR head
         shell: bash
         run: |
           set -euo pipefail
-          echo "OpenMetadata isolated validation runner available"
-          test "${GITHUB_REF_NAME}" = "verify/openmetadata-ci-20261121"
+          test "$(git rev-parse HEAD)" = "b308fc9421f73c780b0b2ec7d4d454ea60d07d68"
+          test -z "$(git status --porcelain)"
+      - name: Set up project Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: openmetadata-ui/src/main/resources/ui/.nvmrc
+      - name: Generate TypeScript from canonical schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./openmetadata-ui/src/main/resources/ui/json2ts-generate-all.sh -l true
+          test -s openmetadata-ui/src/main/resources/ui/src/generated/entity/data/table.ts
+          grep -q 'NOT_NULL_UNIQUE' openmetadata-ui/src/main/resources/ui/src/generated/entity/data/table.ts
+      - name: Generate dereferenced UI schemas
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd openmetadata-ui/src/main/resources/ui
+          yarn install --frozen-lockfile --ignore-scripts --network-timeout 100000
+          yarn parse-schema
+      - name: Review and commit only generated outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add openmetadata-ui/src/main/resources/ui/src/generated/ \
+                  openmetadata-ui/src/main/resources/ui/src/jsons/ \
+                  openmetadata-ui/src/main/resources/ui/public/jsons/
+          test "$(git diff --cached --name-only | wc -l)" -le 100
+          test "$(git diff --cached --name-only | wc -l)" -ge 1
+          grep -q 'NotNullUnique' openmetadata-ui/src/main/resources/ui/src/generated/entity/data/table.ts
+          git diff --cached --stat
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(schema): regenerate TypeScript and dereferenced schemas for NOT_NULL_UNIQUE"
+          git push origin HEAD:fix/unique-not-null-column-constraint-37986-20261120
