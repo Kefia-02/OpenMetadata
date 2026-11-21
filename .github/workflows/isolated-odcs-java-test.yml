@@ -1,0 +1,31 @@
+name: Isolated ODCS NOT_NULL_UNIQUE Java test
+on:
+  push:
+    branches:
+      - verify/openmetadata-odcs-java-tests-20261121
+permissions:
+  contents: read
+jobs:
+  odcs-java:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/unique-not-null-column-constraint-37986-20261120
+          persist-credentials: false
+      - name: Verify exact source
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "1f82dc46bb68ffcf7fd9efbd39b93b006f530bfa"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Run ODCSConverterTest with required Maven reactor modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn --batch-mode --no-transfer-progress -pl openmetadata-service -am \
+            -Dtest=ODCSConverterTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
