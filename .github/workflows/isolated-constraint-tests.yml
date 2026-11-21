@@ -1,0 +1,35 @@
+name: Isolated NOT_NULL_UNIQUE Python regression tests
+on:
+  push:
+    branches:
+      - verify/openmetadata-constraint-tests-20261121
+permissions:
+  contents: read
+jobs:
+  constraint-python-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/unique-not-null-column-constraint-37986-20261120
+          persist-credentials: false
+      - name: Verify source revision
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "b308fc9421f73c780b0b2ec7d4d454ea60d07d68"
+      - name: Official Python environment
+        uses: ./.github/actions/setup-openmetadata-test-environment
+        with:
+          python-version: '3.10'
+          classification-models: 'false'
+          install-server: 'false'
+      - name: Run schema constraint tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          source env/bin/activate
+          cd ingestion
+          python -m pytest \
+            tests/unit/topology/database/test_complex_column_constraints.py \
+            tests/unit/observability/data_quality/validations/runtime_param_setter/test_table_diff_params_setter.py \
+            -q --tb=short
