@@ -16,7 +16,7 @@ jobs:
           ref: fix/query-builder-optional-label-ts18048-v2-20261121
           persist-credentials: false
       - name: Pin bugfix commit
-        run: test "$(git rev-parse HEAD)" = "c121b7178aadb2aeb347c6411e7824047fc50ddb"
+        run: test "$(git rev-parse HEAD)" = "a865a84da747b9ac6ad6ca88970d6b01384694e1"
         shell: bash
       - uses: actions/setup-node@v4
         with:
@@ -36,9 +36,9 @@ jobs:
           set -euo pipefail
           cd openmetadata-ui/src/main/resources/ui
           yarn test --runInBand --watch=false --coverage=false --runTestsByPath src/utils/queryBuilderWidgets/OMSelectWidget.test.tsx
-      - name: Check full UI types without declaration generation
+      - name: Run standard UI TypeScript check
         shell: bash
         run: |
           set -euo pipefail
           cd openmetadata-ui/src/main/resources/ui
-          node ./node_modules/typescript-native/bin/tsc --noEmit --declaration false --declarationMap false
+          yarn tsc:check
