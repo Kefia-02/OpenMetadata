@@ -1,0 +1,35 @@
+name: Isolated terminal ingestion status tests
+on:
+  push:
+    branches:
+      - verify/openmetadata-status-20261121
+permissions:
+  contents: read
+jobs:
+  test-terminal-status-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout exact status PR head
+        uses: actions/checkout@v4
+        with:
+          ref: fix/37081-agent-completion-status-20261120
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact status branch
+        run: test "$(git rev-parse HEAD)" = "1eb479df211353da95e92518de13809d14b489af"
+        shell: bash
+      - name: Install official OpenMetadata test environment
+        uses: ./.github/actions/setup-openmetadata-test-environment
+        with:
+          python-version: '3.10'
+          classification-models: 'false'
+          install-server: 'false'
+          install-test-dependencies: 'true'
+      - name: Run real regression tests from repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          source env/bin/activate
+          cd ingestion
+          python -m pytest tests/unit/workflow/test_status_mixin_progress.py -q --tb=short
