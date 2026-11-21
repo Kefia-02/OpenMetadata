@@ -1,0 +1,34 @@
+name: Isolated OpenMetadata BigQuery lifecycle post-fix tests
+on:
+  push:
+    branches:
+      - verify/bigquery-region-postfix-20261121
+permissions:
+  contents: read
+jobs:
+  bigquery-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout exact BigQuery PR head
+        uses: actions/checkout@v4
+        with:
+          ref: fix/bigquery-lifecycle-region-cache-38207-20261120
+          persist-credentials: false
+      - name: Verify exact PR SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "5712ea2d1de5b780e388a8a4581db94a85528f0d"
+      - name: Install official OpenMetadata test environment
+        uses: ./.github/actions/setup-openmetadata-test-environment
+        with:
+          python-version: '3.10'
+          classification-models: 'false'
+          install-server: 'false'
+          install-test-dependencies: 'true'
+      - name: Run BigQuery lifecycle regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          source env/bin/activate
+          cd ingestion
+          python -m pytest tests/unit/topology/database/test_bigquery.py -q --tb=short -k lifecycle
