@@ -24,6 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          make install_antlr_cli
           make generate
           python scripts/check_generated_models.py --check
           test -n "$(find ingestion/src/metadata/generated/schema -name '*.py' -print -quit)"
@@ -46,5 +47,5 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mvn --batch-mode --no-transfer-progress -pl openmetadata-spec clean install -DskipTests
+          mvn --batch-mode --no-transfer-progress -pl openmetadata-spec -am clean install -DskipTests
           test -n "$(find openmetadata-spec/target/generated-sources -name '*.java' -print -quit)"
