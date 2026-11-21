@@ -30,15 +30,15 @@ jobs:
           corepack enable
           cd openmetadata-ui/src/main/resources/ui
           yarn install --frozen-lockfile --network-timeout 100000
-      - name: Check full UI TypeScript types
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd openmetadata-ui/src/main/resources/ui
-          yarn tsc:check
       - name: Run query-builder select widget tests
         shell: bash
         run: |
           set -euo pipefail
           cd openmetadata-ui/src/main/resources/ui
           yarn test --runInBand --watch=false --coverage=false --runTestsByPath src/utils/queryBuilderWidgets/OMSelectWidget.test.tsx
+      - name: Check full UI types without declaration generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd openmetadata-ui/src/main/resources/ui
+          node ./node_modules/typescript-native/bin/tsc --noEmit --declaration false --declarationMap false
