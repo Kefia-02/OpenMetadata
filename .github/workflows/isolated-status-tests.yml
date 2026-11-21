@@ -17,7 +17,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - name: Verify exact status branch
-        run: test "$(git rev-parse HEAD)" = "6ce7d987a759c428005b5ae607ea3a47bc2003b0"
+        run: test "$(git rev-parse HEAD)" = "04ea5d03b404b8d03d2f37550d0989f160a12648"
         shell: bash
       - name: Install official OpenMetadata test environment
         uses: ./.github/actions/setup-openmetadata-test-environment
