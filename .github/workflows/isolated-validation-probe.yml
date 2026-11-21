@@ -1,0 +1,18 @@
+name: Isolated OpenMetadata validation probe
+on:
+  push:
+    branches:
+      - verify/openmetadata-ci-20261121
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify runner and branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "OpenMetadata isolated validation runner available"
+          test "${GITHUB_REF_NAME}" = "verify/openmetadata-ci-20261121"
