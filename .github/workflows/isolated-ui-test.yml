@@ -23,6 +23,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: openmetadata-ui/src/main/resources/ui/.nvmrc
+      - name: Install required pinned ANTLR generator
+        shell: bash
+        run: sudo make install_antlr_cli
       - name: Install official UI lockfile dependencies
         shell: bash
         run: |
