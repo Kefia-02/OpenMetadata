@@ -1,0 +1,50 @@
+name: Isolated OpenMetadata Java and Python model generation
+on:
+  push:
+    branches:
+      - verify/openmetadata-java-python-20261121
+permissions:
+  contents: read
+jobs:
+  generate-pydantic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/unique-not-null-column-constraint-37986-20261120
+          persist-credentials: false
+      - name: Verify draft head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "b308fc9421f73c780b0b2ec7d4d454ea60d07d68"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Generate official Pydantic models
+        shell: bash
+        run: |
+          set -euo pipefail
+          make generate
+          python scripts/check_generated_models.py --check
+          test -n "$(find ingestion/src/metadata/generated/schema -name '*.py' -print -quit)"
+  generate-java-pojos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/unique-not-null-column-constraint-37986-20261120
+          persist-credentials: false
+      - name: Verify draft head
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "b308fc9421f73c780b0b2ec7d4d454ea60d07d68"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Run official Java schema generation and compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn --batch-mode --no-transfer-progress -pl openmetadata-spec clean install -DskipTests
+          test -n "$(find openmetadata-spec/target/generated-sources -name '*.java' -print -quit)"
