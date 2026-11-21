@@ -1,0 +1,54 @@
+name: Validate PR38251 reviewer findings
+on:
+  push:
+    branches:
+      - verify/openmetadata-review-p1-20261121
+permissions:
+  contents: read
+jobs:
+  foreign-key-cardinality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/unique-not-null-column-constraint-37986-20261120
+          persist-credentials: false
+      - name: Verify PR source revision
+        run: test "$(git rev-parse HEAD)" = "b4e1a7868ceb504f13d8d1ae730d32baf6c9ae04"
+        shell: bash
+      - name: Install canonical Python test environment
+        uses: ./.github/actions/setup-openmetadata-test-environment
+        with:
+          python-version: '3.10'
+          classification-models: 'false'
+          install-server: 'false'
+      - name: Test FK cardinality and uniqueness regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          source env/bin/activate
+          cd ingestion
+          python -m pytest tests/unit/topology/database/test_common_db_source.py -q --tb=short
+
+  rdf-constraint-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/unique-not-null-column-constraint-37986-20261120
+          persist-credentials: false
+      - name: Verify PR source revision
+        run: test "$(git rev-parse HEAD)" = "b4e1a7868ceb504f13d8d1ae730d32baf6c9ae04"
+        shell: bash
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Run real RDF property mapper regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mvn --batch-mode --no-transfer-progress -pl openmetadata-service -am \
+            -Dtest=RdfPropertyMapperTest -Dsurefire.failIfNoSpecifiedTests=false install
