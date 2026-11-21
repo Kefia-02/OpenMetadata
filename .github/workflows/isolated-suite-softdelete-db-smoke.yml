@@ -101,7 +101,7 @@ jobs:
                     JOIN data_quality_data_time_series d ON d.entityFQNHash = sc.fqn_hash
                     GROUP BY sc.suite_id ORDER BY sc.suite_id
                   """)
-                  assert cur.fetchall() == (("suite1", 2), ("suite2", 1)), label
+                  assert list(cur.fetchall()) == [("suite1", 2), ("suite2", 1)], label
                   cur.execute(active_cte + """
                     SELECT MAX(d.event_ts) FROM active_cases sc
                     JOIN data_quality_data_time_series d ON d.entityFQNHash = sc.fqn_hash
