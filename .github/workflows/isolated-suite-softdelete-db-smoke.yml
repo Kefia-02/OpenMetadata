@@ -1,0 +1,114 @@
+name: Isolated suite soft-delete real database smoke
+on:
+  push:
+    branches:
+      - verify/soft-delete-db-smoke-20261121
+permissions:
+  contents: read
+jobs:
+  smoke-sql-predicates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 10
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: testdb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -u root -proot" --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/test-suite-soft-delete-results-38228-20261120
+          persist-credentials: false
+      - name: Verify PR version
+        run: test "$(git rev-parse HEAD)" = "9d899d817f83bab41f82adb1bf0dec519d2830fc"
+      - name: Install database drivers
+        run: python3 -m pip install --quiet --user PyMySQL psycopg2-binary
+      - name: Real MySQL and PostgreSQL SQL predicate smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import pymysql
+          import psycopg2
+
+          source = Path("openmetadata-service/src/main/java/org/openmetadata/service/jdbi3/TimeSeriesDAOs.java").read_text()
+          assert source.count("tc.deleted = FALSE OR tc.deleted IS NULL") >= 5, "Changed DAO queries missing deleted-case filter"
+
+          dbs = {
+              "mysql": lambda: pymysql.connect(host="127.0.0.1", port=3306, user="root", password="root", database="testdb"),
+              "postgres": lambda: psycopg2.connect(host="127.0.0.1", port=5432, user="postgres", password="postgres", database="postgres"),
+          }
+          for label, connect in dbs.items():
+              db = connect()
+              try:
+                  cur = db.cursor()
+                  for table in ("data_quality_data_time_series", "entity_relationship", "test_case"):
+                      cur.execute(f"DROP TABLE IF EXISTS {table}")
+                  cur.execute("CREATE TABLE test_case(id VARCHAR(16) PRIMARY KEY, fqnHash VARCHAR(64), deleted BOOLEAN NULL)")
+                  cur.execute("CREATE TABLE entity_relationship(fromId VARCHAR(16), toId VARCHAR(16), fromEntity VARCHAR(32), toEntity VARCHAR(32))")
+                  cur.execute("CREATE TABLE data_quality_data_time_series(entityFQNHash VARCHAR(64), event_ts BIGINT, outcome VARCHAR(32))")
+                  cur.executemany("INSERT INTO test_case VALUES (%s, %s, %s)", [
+                      ("live", "hash-live", False),
+                      ("gone", "hash-gone", True),
+                      ("legacy", "hash-legacy", None),
+                      ("s2-live", "hash-s2", False),
+                  ])
+                  cur.executemany("INSERT INTO entity_relationship VALUES (%s, %s, %s, %s)", [
+                      ("suite1", "live", "testSuite", "testCase"),
+                      ("suite1", "gone", "testSuite", "testCase"),
+                      ("suite1", "legacy", "testSuite", "testCase"),
+                      ("suite2", "s2-live", "testSuite", "testCase"),
+                  ])
+                  cur.executemany("INSERT INTO data_quality_data_time_series VALUES (%s, %s, %s)", [
+                      ("hash-live", 100, "Success"),
+                      ("hash-gone", 999, "Failed"),
+                      ("hash-legacy", 200, "Success"),
+                      ("hash-s2", 300, "Failed"),
+                  ])
+                  db.commit()
+                  active_cte = """
+                      WITH active_cases AS (
+                        SELECT er.fromId AS suite_id, tc.fqnHash AS fqn_hash
+                        FROM entity_relationship er JOIN test_case tc ON er.toId = tc.id
+                        WHERE er.fromEntity = 'testSuite' AND er.toEntity = 'testCase'
+                        AND (tc.deleted = FALSE OR tc.deleted IS NULL)
+                      )
+                  """
+                  cur.execute(active_cte + """
+                    SELECT d.outcome FROM active_cases sc
+                    JOIN data_quality_data_time_series d ON d.entityFQNHash = sc.fqn_hash
+                    WHERE sc.suite_id = 'suite1' ORDER BY d.event_ts
+                  """)
+                  assert [row[0] for row in cur.fetchall()] == ["Success", "Success"], label
+                  cur.execute(active_cte + """
+                    SELECT sc.suite_id, COUNT(*) FROM active_cases sc
+                    JOIN data_quality_data_time_series d ON d.entityFQNHash = sc.fqn_hash
+                    GROUP BY sc.suite_id ORDER BY sc.suite_id
+                  """)
+                  assert cur.fetchall() == (("suite1", 2), ("suite2", 1)), label
+                  cur.execute(active_cte + """
+                    SELECT MAX(d.event_ts) FROM active_cases sc
+                    JOIN data_quality_data_time_series d ON d.entityFQNHash = sc.fqn_hash
+                    WHERE sc.suite_id = 'suite1'
+                  """)
+                  assert cur.fetchone()[0] == 200, label
+                  print(f"PASS {label}: single-suite, batched summaries, latest timestamp (deleted excluded, NULL retained)")
+              finally:
+                  db.close()
+          PY
