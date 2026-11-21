@@ -1,0 +1,44 @@
+name: Isolated query-builder optional-label typecheck
+on:
+  push:
+    branches:
+      - verify/omselect-typecheck-20261121
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/query-builder-optional-label-ts18048-v2-20261121
+          persist-credentials: false
+      - name: Pin bugfix commit
+        run: test "$(git rev-parse HEAD)" = "c121b7178aadb2aeb347c6411e7824047fc50ddb"
+        shell: bash
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: openmetadata-ui/src/main/resources/ui/.nvmrc
+      - name: Install ANTLR
+        run: sudo make install_antlr_cli
+      - name: Install UI dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          cd openmetadata-ui/src/main/resources/ui
+          yarn install --frozen-lockfile --network-timeout 100000
+      - name: Check full UI TypeScript types
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd openmetadata-ui/src/main/resources/ui
+          yarn tsc:check
+      - name: Run query-builder select widget tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd openmetadata-ui/src/main/resources/ui
+          yarn test --runInBand --watch=false --coverage=false --runTestsByPath src/utils/queryBuilderWidgets/OMSelectWidget.test.tsx
