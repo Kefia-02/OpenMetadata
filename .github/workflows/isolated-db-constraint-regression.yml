@@ -23,6 +23,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: testdb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -u root -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout exact constraint PR
         uses: actions/checkout@v4
@@ -42,6 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           source env/bin/activate
+          python -m pip install 'PyMySQL>=1.1,<2'
           python - <<'PY'
           from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, inspect
           from metadata.generated.schema.entity.data.table import Constraint
@@ -62,10 +75,11 @@ jobs:
           urls = {
               'sqlite': 'sqlite:///:memory:',
               'postgresql': 'postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/postgres',
+              'mysql': 'mysql+pymysql://root:root@127.0.0.1:3306/testdb',
           }
           for name, url in urls.items():
               engine = create_engine(url)
-              schema = 'main' if name == 'sqlite' else 'public'
+              schema = {'sqlite': 'main', 'postgresql': 'public', 'mysql': 'testdb'}[name]
               metadata = MetaData()
               Table('constraint_reflection_test', metadata,
                     Column('id', Integer, primary_key=True),
