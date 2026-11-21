@@ -6,25 +6,44 @@ on:
 permissions:
   contents: read
 jobs:
-  test-suite-repository:
+  suite-regressions:
     runs-on: ubuntu-latest
-    timeout-minutes: 65
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/test-suite-soft-delete-results-38228-20261120
+          ref: a038bf6e231ca4e2b51977bcb201e655a10d52e6
           persist-credentials: false
-      - name: Validate submitted PR commit
-        run: test "$(git rev-parse HEAD)" = "9d899d817f83bab41f82adb1bf0dec519d2830fc"
       - uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: temurin
-          cache: maven
-      - name: Run focused TestSuiteRepositoryTest and reactor dependencies
+      - name: Build test runtime and run the suite repository unit tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          mvn -B -ntp install -pl :openmetadata-integration-tests -am
+          -DskipITs -Dspring-boot.repackage.skip=true
+          -Dtest=TestSuiteRepositoryTest -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Run the two soft-delete integration tests on MySQL and PostgreSQL
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          set -euo pipefail
-          mvn -B --no-transfer-progress package -pl openmetadata-service -am -Dtest=TestSuiteRepositoryTest -Dsurefire.failIfNoSpecifiedTests=false -DfailIfNoTests=false
+          set -uo pipefail
+          result=0
+          for profile in mysql-elasticsearch postgres-opensearch; do
+            mvn -B -ntp verify -pl :openmetadata-integration-tests -P"${profile}" \
+              -DintegrationTests.skipIsolated=true -DintegrationTests.parallelism=1 \
+              -Dit.test='TestSuiteResourceIT#softDeletedFailedTestIsExcludedFromSuiteDetailAndSearchList+suiteCompletionEmitsOnlyTheSurvivingResult' || result=1
+            python3 - <<'PY' || result=1
+          import glob, xml.etree.ElementTree as ET
+          expected = {"softDeletedFailedTestIsExcludedFromSuiteDetailAndSearchList", "suiteCompletionEmitsOnlyTheSurvivingResult"}
+          files = glob.glob("openmetadata-integration-tests/target/failsafe-reports/TEST-*TestSuiteResourceIT.xml")
+          cases = [c for path in files for c in ET.parse(path).getroot().iter("testcase")]
+          passed = {c.get("name", "").split("(")[0] for c in cases if all(c.find(tag) is None for tag in ("failure", "error", "skipped"))}
+          assert expected <= passed, (expected, passed)
+          PY
+            rm -f openmetadata-integration-tests/target/failsafe-reports/TEST-*TestSuiteResourceIT.xml
+          done
+          exit "$result"
