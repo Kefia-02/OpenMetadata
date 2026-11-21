@@ -17,7 +17,7 @@ jobs:
           persist-credentials: false
       - name: Verify exact PR SHA
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "5712ea2d1de5b780e388a8a4581db94a85528f0d"
+        run: test "$(git rev-parse HEAD)" = "58eb8518cd73e37dd6b7383ea98096d5dcabe1c6"
       - name: Install official OpenMetadata test environment
         uses: ./.github/actions/setup-openmetadata-test-environment
         with:
