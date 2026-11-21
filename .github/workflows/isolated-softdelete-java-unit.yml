@@ -27,4 +27,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mvn -B --no-transfer-progress test -pl openmetadata-service -am -Dtest=TestSuiteRepositoryTest -Dsurefire.failIfNoSpecifiedTests=false -DfailIfNoTests=false
+          mvn -B --no-transfer-progress package -pl openmetadata-service -am -Dtest=TestSuiteRepositoryTest -Dsurefire.failIfNoSpecifiedTests=false -DfailIfNoTests=false
