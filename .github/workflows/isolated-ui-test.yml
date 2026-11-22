@@ -1,4 +1,4 @@
-name: Isolated OpenMetadata UI typecheck and constraint tests
+name: Isolated pagination PR regression checks
 on:
   push:
     branches:
@@ -6,42 +6,59 @@ on:
 permissions:
   contents: read
 jobs:
-  validate-ui:
+  pagination:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pr: 38308
+            sha: 5ff7b76fd17fe9676365fba160d991e2403a8e52
+            sources: >-
+              src/components/Classifications/ClassificationDetails/ClassificationDetails.tsx
+              src/components/Settings/Bot/BotListV1/BotListV1.component.tsx
+              src/pages/NotificationListPage/NotificationListPage.tsx
+              src/pages/PoliciesPage/PoliciesListPage/PoliciesListPage.tsx
+              src/pages/RolesPage/RolesListPage/RolesListPage.tsx
+              src/pages/ServiceVersionPage/ServiceVersionPage.tsx
+          - pr: 38309
+            sha: 90e714708eef756fa209fa31f3ec75806de0f493
+            sources: >-
+              src/components/Dashboard/DataModel/DataModels/DataModelsTable.tsx
+              src/pages/StoredProcedure/StoredProcedureTab.tsx
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/unique-not-null-column-constraint-37986-20261120
+          ref: ${{ matrix.sha }}
           persist-credentials: false
-      - name: Check exact PR code after generated model commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "1f82dc46bb68ffcf7fd9efbd39b93b006f530bfa"
-          grep -q 'NotNullUnique' openmetadata-ui/src/main/resources/ui/src/generated/entity/data/table.ts
+      - name: Check exact PR revision
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: actions/setup-node@v4
         with:
           node-version-file: openmetadata-ui/src/main/resources/ui/.nvmrc
-      - name: Install required pinned ANTLR generator
-        shell: bash
+      - name: Install pinned ANTLR
         run: sudo make install_antlr_cli
-      - name: Install official UI lockfile dependencies
+      - name: Install lockfile dependencies
         shell: bash
         run: |
-          set -euo pipefail
+          status=0
           corepack enable
           cd openmetadata-ui/src/main/resources/ui
-          yarn install --frozen-lockfile --network-timeout 100000
-      - name: Run table constraints Jest regression
+          yarn install --frozen-lockfile --network-timeout 100000 > "$RUNNER_TEMP/ui-install.log" 2>&1 || status=$?
+          tail -n 80 "$RUNNER_TEMP/ui-install.log"
+          exit "$status"
+      - name: Run tests related to the changed pagination components
+        env:
+          CHANGED_SOURCES: ${{ matrix.sources }}
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           cd openmetadata-ui/src/main/resources/ui
-          yarn test --runInBand --watch=false --coverage=false --runTestsByPath src/utils/TableUtils.test.tsx
-      - name: Run TypeScript typechecking
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd openmetadata-ui/src/main/resources/ui
-          yarn tsc:check
+          read -r -a sources <<< "$CHANGED_SOURCES"
+          status=0
+          yarn test --runInBand --watch=false --coverage=false --findRelatedTests "${sources[@]}" > "$RUNNER_TEMP/ui-tests.log" 2>&1 || status=$?
+          tail -n 120 "$RUNNER_TEMP/ui-tests.log"
+          exit "$status"
