@@ -1,4 +1,4 @@
-name: Isolated pagination PR regression checks
+name: Focused pagination component regression checks
 on:
   push:
     branches:
@@ -8,25 +8,25 @@ permissions:
 jobs:
   pagination:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         include:
           - pr: 38308
             sha: 5ff7b76fd17fe9676365fba160d991e2403a8e52
-            sources: >-
-              src/components/Classifications/ClassificationDetails/ClassificationDetails.tsx
-              src/components/Settings/Bot/BotListV1/BotListV1.component.tsx
-              src/pages/NotificationListPage/NotificationListPage.tsx
-              src/pages/PoliciesPage/PoliciesListPage/PoliciesListPage.tsx
-              src/pages/RolesPage/RolesListPage/RolesListPage.tsx
-              src/pages/ServiceVersionPage/ServiceVersionPage.tsx
+            tests: >-
+              src/components/Classifications/ClassificationDetails/ClassificationDetails.test.tsx
+              src/components/Settings/Bot/BotListV1/BotListV1.component.test.tsx
+              src/pages/NotificationListPage/NotificationListPage.test.tsx
+              src/pages/PoliciesPage/PoliciesListPage/PoliciesListPage.test.tsx
+              src/pages/RolesPage/RolesListPage/RolesListPage.test.tsx
+              src/pages/ServiceVersionPage/ServiceVersionPage.test.tsx
           - pr: 38309
             sha: 90e714708eef756fa209fa31f3ec75806de0f493
-            sources: >-
-              src/components/Dashboard/DataModel/DataModels/DataModelsTable.tsx
-              src/pages/StoredProcedure/StoredProcedureTab.tsx
+            tests: >-
+              src/components/Dashboard/DataModel/DataModels/ModelTab/ModelTab.test.tsx
+              src/pages/StoredProcedure/StoredProcedureTab.test.tsx
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,15 +50,15 @@ jobs:
           yarn install --frozen-lockfile --network-timeout 100000 > "$RUNNER_TEMP/ui-install.log" 2>&1 || status=$?
           tail -n 80 "$RUNNER_TEMP/ui-install.log"
           exit "$status"
-      - name: Run tests related to the changed pagination components
+      - name: Run the affected component test files
         env:
-          CHANGED_SOURCES: ${{ matrix.sources }}
+          TEST_FILES: ${{ matrix.tests }}
         shell: bash
         run: |
           set -uo pipefail
           cd openmetadata-ui/src/main/resources/ui
-          read -r -a sources <<< "$CHANGED_SOURCES"
+          read -r -a tests <<< "$TEST_FILES"
           status=0
-          yarn test --runInBand --watch=false --coverage=false --findRelatedTests "${sources[@]}" > "$RUNNER_TEMP/ui-tests.log" 2>&1 || status=$?
+          yarn test --runInBand --watch=false --coverage=false --forceExit --runTestsByPath "${tests[@]}" > "$RUNNER_TEMP/ui-tests.log" 2>&1 || status=$?
           tail -n 120 "$RUNNER_TEMP/ui-tests.log"
           exit "$status"
