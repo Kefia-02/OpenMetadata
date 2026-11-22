@@ -8,24 +8,40 @@ permissions:
 jobs:
   suite-regressions:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: a038bf6e231ca4e2b51977bcb201e655a10d52e6
+          ref: 6e258fe9ac38e4c9c69550aec9dceec1d8f82bef
           persist-credentials: false
+      - name: Verify reviewed revision
+        run: test "$(git rev-parse HEAD)" = "6e258fe9ac38e4c9c69550aec9dceec1d8f82bef"
       - uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: temurin
-      - name: Build test runtime and run the suite repository unit tests
+          cache: maven
+      - name: Build integration runtime
+        timeout-minutes: 20
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          status=0
+          timeout 1140 mvn -B -ntp install -pl :openmetadata-integration-tests -am \
+            -DskipTests -DskipITs -Dspring-boot.repackage.skip=true \
+            -Dmaven.wagon.http.retryHandler.count=1 \
+            > "$RUNNER_TEMP/build.log" 2>&1 || status=$?
+          tail -n 180 "$RUNNER_TEMP/build.log"
+          exit "$status"
+      - name: Run focused repository unit tests
+        timeout-minutes: 5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
-          mvn -B -ntp install -pl :openmetadata-integration-tests -am
-          -DskipITs -Dspring-boot.repackage.skip=true
-          -Dtest=TestSuiteRepositoryTest -Dsurefire.failIfNoSpecifiedTests=false
-      - name: Run the two soft-delete integration tests on MySQL and PostgreSQL
+          mvn -B -ntp test -pl :openmetadata-service -Dtest=TestSuiteRepositoryTest
+      - name: Run soft-delete database and completion regressions
+        timeout-minutes: 22
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -33,15 +49,20 @@ jobs:
           set -uo pipefail
           result=0
           for profile in mysql-elasticsearch postgres-opensearch; do
-            mvn -B -ntp verify -pl :openmetadata-integration-tests -P"${profile}" \
+            status=0
+            timeout 600 mvn -B -ntp verify -pl :openmetadata-integration-tests -P"${profile}" \
               -DintegrationTests.skipIsolated=true -DintegrationTests.parallelism=1 \
-              -Dit.test='TestSuiteResourceIT#softDeletedFailedTestIsExcludedFromSuiteDetailAndSearchList+suiteCompletionEmitsOnlyTheSurvivingResult' || result=1
+              -Dit.test='TestSuiteResourceIT#softDeletedFailedTestIsExcludedFromSuiteDetailAndSearchList+suiteCompletionEmitsOnlyTheSurvivingResult' \
+              > "$RUNNER_TEMP/${profile}.log" 2>&1 || status=$?
+            tail -n 150 "$RUNNER_TEMP/${profile}.log"
+            if [ "$status" -ne 0 ]; then result=1; fi
             python3 - <<'PY' || result=1
           import glob, xml.etree.ElementTree as ET
           expected = {"softDeletedFailedTestIsExcludedFromSuiteDetailAndSearchList", "suiteCompletionEmitsOnlyTheSurvivingResult"}
           files = glob.glob("openmetadata-integration-tests/target/failsafe-reports/TEST-*TestSuiteResourceIT.xml")
           cases = [c for path in files for c in ET.parse(path).getroot().iter("testcase")]
           passed = {c.get("name", "").split("(")[0] for c in cases if all(c.find(tag) is None for tag in ("failure", "error", "skipped"))}
+          print("Passed integration methods", sorted(passed))
           assert expected <= passed, (expected, passed)
           PY
             rm -f openmetadata-integration-tests/target/failsafe-reports/TEST-*TestSuiteResourceIT.xml
