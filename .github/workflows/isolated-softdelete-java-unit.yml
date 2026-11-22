@@ -12,10 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 6e258fe9ac38e4c9c69550aec9dceec1d8f82bef
+          ref: 0840e1a9d641c066009caba745da7dc2659c81c8
           persist-credentials: false
       - name: Verify reviewed revision
-        run: test "$(git rev-parse HEAD)" = "6e258fe9ac38e4c9c69550aec9dceec1d8f82bef"
+        run: test "$(git rev-parse HEAD)" = "0840e1a9d641c066009caba745da7dc2659c81c8"
       - uses: actions/setup-java@v5
         with:
           java-version: '21'
